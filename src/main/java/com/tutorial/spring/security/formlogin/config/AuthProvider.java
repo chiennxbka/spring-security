@@ -28,49 +28,55 @@ public class AuthProvider implements AuthenticationProvider {
     private UserDetailsService userDetailsService;
 
     @Autowired
+    private PasswordEncoder passwordEncoder;
+
+    @Autowired
     private AttemptsRepository attemptsRepository;
 
     @Autowired
     private UserRepository userRepository;
 
     @Override
-    public Authentication authenticate(Authentication authentication) throws AuthenticationException {
+    public Authentication authenticate(Authentication authentication) {
         String username = (authentication.getPrincipal() == null) ? "NONE_PROVIDER" : authentication.getName();
+        String password = authentication.getCredentials().toString();
         UserDetails userDetails;
         try {
             userDetails = userDetailsService.loadUserByUsername(username);
-        } catch (BadCredentialsException exception) {
-            this.calculateAttempts(username);
+            if (passwordEncoder.matches(password, userDetails.getPassword())) {
+                return new UsernamePasswordAuthenticationToken(username, password, userDetails.getAuthorities());
+            } else {
+                this.calculateAttempts(username);
+                throw new BadCredentialsException("Invalid login details");
+            }
+        } catch (AuthenticationException exception) {
             throw new BadCredentialsException("Invalid login details");
         }
-        return this.createSuccessfulAuthentication(authentication, userDetails);
     }
 
     private void calculateAttempts(String username) {
-        Optional<Attempts> userAttempts = attemptsRepository.findByUsername(username);
-        if (userAttempts.isPresent()) {
-            Attempts attempts = userAttempts.get();
-            if (attempts.getAttempts() + 1 >= ATTEMPTS_LIMIT) {
+        Optional<User> userOpt = userRepository.findByUsername(username);
+        if (userOpt.isPresent()) {
+            User user = userOpt.get();
+            Optional<Attempts> attemptsUser = attemptsRepository.findByUsername(username);
+            if (attemptsUser.isPresent()) {
+                Attempts attempts = attemptsUser.get();
+                if (attempts.getAttempts() + 1 >= ATTEMPTS_LIMIT) {
+                    attempts.setAttempts(attempts.getAttempts() + 1);
+                    attemptsRepository.save(attempts);
+                    user.setAccountNonLocked(false);
+                    userRepository.save(user);
+                }
                 attempts.setAttempts(attempts.getAttempts() + 1);
                 attemptsRepository.save(attempts);
-                User user = userRepository.findByUsername(username).orElseThrow(() -> new UsernameNotFoundException("User name not found"));
-                user.setAccountNonLocked(false);
-                userRepository.save(user);
-                throw new LockedException("Too many invalid attempts. Account is locked!!");
+            } else {
+                attemptsRepository.save(new Attempts(username, 1));
             }
-            attempts.setAttempts(attempts.getAttempts() + 1);
-            attemptsRepository.save(attempts);
         }
     }
 
-    private Authentication createSuccessfulAuthentication(final Authentication authentication, final UserDetails user) {
-        UsernamePasswordAuthenticationToken token = new UsernamePasswordAuthenticationToken(user.getUsername(), authentication.getCredentials(), user.getAuthorities());
-        token.setDetails(authentication.getDetails());
-        return token;
-    }
-
     @Override
-    public boolean supports(Class<?> authentication) {
-        return true;
+    public boolean supports(Class<?> authenticationType) {
+        return authenticationType.equals(UsernamePasswordAuthenticationToken.class);
     }
 }

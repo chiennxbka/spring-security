@@ -14,6 +14,14 @@ public class Attempts {
 
     private int attempts;
 
+    public Attempts() {
+    }
+
+    public Attempts(String username, int attempts) {
+        this.username = username;
+        this.attempts = attempts;
+    }
+
     public int getId() {
         return id;
     }
