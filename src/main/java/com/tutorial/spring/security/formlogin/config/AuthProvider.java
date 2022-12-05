@@ -7,13 +7,11 @@ import com.tutorial.spring.security.formlogin.repository.UserRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.authentication.AuthenticationProvider;
 import org.springframework.security.authentication.BadCredentialsException;
-import org.springframework.security.authentication.LockedException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsService;
-import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
 
@@ -44,6 +42,13 @@ public class AuthProvider implements AuthenticationProvider {
         try {
             userDetails = userDetailsService.loadUserByUsername(username);
             if (passwordEncoder.matches(password, userDetails.getPassword())) {
+                // reset attempts = 0
+                Optional<Attempts> attemptsUser = attemptsRepository.findByUsername(username);
+                if (attemptsUser.isPresent()) {
+                    Attempts attempts = attemptsUser.get();
+                    attempts.setAttempts(0);
+                    attemptsRepository.save(attempts);
+                }
                 return new UsernamePasswordAuthenticationToken(username, password, userDetails.getAuthorities());
             } else {
                 this.calculateAttempts(username);
@@ -58,19 +63,21 @@ public class AuthProvider implements AuthenticationProvider {
         Optional<User> userOpt = userRepository.findByUsername(username);
         if (userOpt.isPresent()) {
             User user = userOpt.get();
-            Optional<Attempts> attemptsUser = attemptsRepository.findByUsername(username);
-            if (attemptsUser.isPresent()) {
-                Attempts attempts = attemptsUser.get();
-                if (attempts.getAttempts() + 1 >= ATTEMPTS_LIMIT) {
+            if (!user.isAccountNonLocked()) {
+                Optional<Attempts> attemptsUser = attemptsRepository.findByUsername(username);
+                if (attemptsUser.isPresent()) {
+                    Attempts attempts = attemptsUser.get();
+                    if (attempts.getAttempts() + 1 >= ATTEMPTS_LIMIT) {
+                        attempts.setAttempts(attempts.getAttempts() + 1);
+                        attemptsRepository.save(attempts);
+                        user.setAccountNonLocked(false);
+                        userRepository.save(user);
+                    }
                     attempts.setAttempts(attempts.getAttempts() + 1);
                     attemptsRepository.save(attempts);
-                    user.setAccountNonLocked(false);
-                    userRepository.save(user);
+                } else {
+                    attemptsRepository.save(new Attempts(username, 1));
                 }
-                attempts.setAttempts(attempts.getAttempts() + 1);
-                attemptsRepository.save(attempts);
-            } else {
-                attemptsRepository.save(new Attempts(username, 1));
             }
         }
     }
