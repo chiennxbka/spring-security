@@ -14,6 +14,8 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 
+import javax.servlet.ServletException;
+
 @Configuration
 @EnableWebSecurity
 public class SecurityConfig {
@@ -29,8 +31,16 @@ public class SecurityConfig {
                 .anyRequest().authenticated()).formLogin((form) -> form.loginPage("/login")
                 .defaultSuccessUrl("/")
                 .usernameParameter("username").passwordParameter("password")
-                .permitAll()).logout(LogoutConfigurer::permitAll);
-
+                .permitAll()).logout(logout -> logout.logoutUrl("/logout")
+                .clearAuthentication(true).invalidateHttpSession(true)
+                .addLogoutHandler(((request, response, authentication) -> {
+                    try {
+                        request.logout();
+                    } catch (ServletException e) {
+                        throw new RuntimeException(e);
+                    }
+                }))
+                .permitAll());
         return http.build();
     }
 

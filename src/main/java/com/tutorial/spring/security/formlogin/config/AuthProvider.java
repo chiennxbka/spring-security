@@ -63,7 +63,7 @@ public class AuthProvider implements AuthenticationProvider {
         Optional<User> userOpt = userRepository.findByUsername(username);
         if (userOpt.isPresent()) {
             User user = userOpt.get();
-            if (!user.isAccountNonLocked()) {
+            if (user.isAccountNonLocked()) {
                 Optional<Attempts> attemptsUser = attemptsRepository.findByUsername(username);
                 if (attemptsUser.isPresent()) {
                     Attempts attempts = attemptsUser.get();
