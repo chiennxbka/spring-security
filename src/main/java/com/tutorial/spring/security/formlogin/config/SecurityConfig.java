@@ -32,6 +32,7 @@ public class SecurityConfig {
                 .defaultSuccessUrl("/")
                 .usernameParameter("username").passwordParameter("password")
                 .permitAll()).logout(logout -> logout.logoutUrl("/logout")
+                .logoutSuccessUrl("/login")
                 .clearAuthentication(true).invalidateHttpSession(true)
                 .addLogoutHandler(((request, response, authentication) -> {
                     try {

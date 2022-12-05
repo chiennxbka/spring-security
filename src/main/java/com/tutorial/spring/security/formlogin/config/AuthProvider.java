@@ -41,6 +41,9 @@ public class AuthProvider implements AuthenticationProvider {
         UserDetails userDetails;
         try {
             userDetails = userDetailsService.loadUserByUsername(username);
+            if (!userDetails.isAccountNonLocked()){
+                throw new BadCredentialsException("Account is locked!");
+            }
             if (passwordEncoder.matches(password, userDetails.getPassword())) {
                 // reset attempts = 0
                 Optional<Attempts> attemptsUser = attemptsRepository.findByUsername(username);
