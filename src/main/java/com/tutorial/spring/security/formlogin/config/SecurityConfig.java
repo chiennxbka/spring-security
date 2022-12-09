@@ -1,18 +1,18 @@
 package com.tutorial.spring.security.formlogin.config;
 
+import com.tutorial.spring.security.formlogin.config.jwt.JwtAuthEntryPoint;
+import com.tutorial.spring.security.formlogin.config.jwt.JwtAuthTokenFilter;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.security.authentication.AuthenticationManager;
-import org.springframework.security.config.Customizer;
-import org.springframework.security.config.annotation.authentication.builders.AuthenticationManagerBuilder;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configuration.WebSecurityCustomizer;
-import org.springframework.security.config.annotation.web.configurers.LogoutConfigurer;
+import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
 import javax.servlet.ServletException;
 
@@ -21,35 +21,36 @@ import javax.servlet.ServletException;
 public class SecurityConfig {
 
     @Autowired
-    AuthProvider authProvider;
+    private JwtAuthEntryPoint authEntryPoint;
 
-    protected static final String[] AUTH_WHITELIST = {"/js/**", "/img/**", "/demo/**", "/css/**", "/resources/**"};
+    protected static final String[] AUTH_WHITELIST = {"/js/**", "/img/**", "/demo/**", "/css/**", "/resources/**", "/login"};
 
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
-        http.authorizeHttpRequests((requests) -> requests.antMatchers("/register/**").permitAll()
-                .anyRequest().authenticated()).formLogin((form) -> form.loginPage("/login")
-                .defaultSuccessUrl("/")
-                .usernameParameter("username").passwordParameter("password")
-                .permitAll()).logout(logout -> logout.logoutUrl("/logout")
-                .logoutSuccessUrl("/login")
+        http.authorizeHttpRequests((requests) -> {
+            try {
+                requests.antMatchers("/register/**").permitAll().anyRequest().authenticated().and()
+                        .exceptionHandling().authenticationEntryPoint(authEntryPoint).and().sessionManagement()
+                        .sessionCreationPolicy(SessionCreationPolicy.STATELESS);
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            }
+        }).logout(logout -> logout.logoutUrl("/logout")
                 .clearAuthentication(true).invalidateHttpSession(true)
                 .addLogoutHandler(((request, response, authentication) -> {
-                    try {
-                        request.logout();
-                    } catch (ServletException e) {
-                        throw new RuntimeException(e);
-                    }
-                }))
-                .permitAll());
+            try {
+                request.logout();
+            } catch (ServletException e) {
+                throw new RuntimeException(e);
+            }
+        })).permitAll());
+        http.addFilterBefore(authenticationJwtTokenFilter(), UsernamePasswordAuthenticationFilter.class);
         return http.build();
     }
 
     @Bean
-    public AuthenticationManager authManager(HttpSecurity http) throws Exception {
-        AuthenticationManagerBuilder authenticationManagerBuilder = http.getSharedObject(AuthenticationManagerBuilder.class);
-        authenticationManagerBuilder.authenticationProvider(authProvider);
-        return authenticationManagerBuilder.build();
+    public JwtAuthTokenFilter authenticationJwtTokenFilter() {
+        return new JwtAuthTokenFilter();
     }
 
     @Bean
