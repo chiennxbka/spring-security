@@ -1,6 +1,6 @@
 package com.tutorial.spring.security.formlogin.controller;
 
-import com.tutorial.spring.security.formlogin.config.jwt.JwtUtils;
+import com.tutorial.spring.security.formlogin.config.auth.JwtUtils;
 import com.tutorial.spring.security.formlogin.model.Attempts;
 import com.tutorial.spring.security.formlogin.model.User;
 import com.tutorial.spring.security.formlogin.payload.LoginPayload;
@@ -8,10 +8,8 @@ import com.tutorial.spring.security.formlogin.payload.RegisterPayload;
 import com.tutorial.spring.security.formlogin.repository.AttemptsRepository;
 import com.tutorial.spring.security.formlogin.repository.UserRepository;
 import com.tutorial.spring.security.formlogin.service.UserService;
-import io.jsonwebtoken.Jwts;
-import io.jsonwebtoken.SignatureAlgorithm;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
+import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.LockedException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -28,8 +26,6 @@ import org.springframework.web.bind.annotation.*;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import javax.servlet.http.HttpSession;
-import java.time.Instant;
-import java.util.Date;
 import java.util.Optional;
 
 @Controller
@@ -41,16 +37,13 @@ public class AuthenticationController {
     private static final int ATTEMPTS_LIMIT = 3;
 
     @Autowired
-    private UserDetailsService userDetailsService;
-
-    @Autowired
-    private PasswordEncoder passwordEncoder;
-
-    @Autowired
     private AttemptsRepository attemptsRepository;
 
     @Autowired
     private UserRepository userRepository;
+
+    @Autowired
+    private AuthenticationManager authenticationManager;
 
     @Autowired
     private JwtUtils jwtUtils;
@@ -64,29 +57,19 @@ public class AuthenticationController {
     @PostMapping("/login")
     @ResponseBody
     public String login(@RequestBody LoginPayload payload) {
-        UserDetails userDetails;
         String username = payload.getUsername();
         String password = payload.getPassword();
         try {
-            userDetails = userDetailsService.loadUserByUsername(username);
+            Authentication authentication = authenticationManager.authenticate(
+                    new UsernamePasswordAuthenticationToken(username, password));
+            SecurityContextHolder.getContext().setAuthentication(authentication);
+            UserDetails userDetails = (UserDetails) authentication.getPrincipal();
             if (!userDetails.isAccountNonLocked()) {
                 throw new BadCredentialsException("Account is locked!");
             }
-            if (passwordEncoder.matches(password, userDetails.getPassword())) {
-                // reset attempts = 0
-                Optional<Attempts> attemptsUser = attemptsRepository.findByUsername(username);
-                if (attemptsUser.isPresent()) {
-                    Attempts attempts = attemptsUser.get();
-                    attempts.setAttempts(0);
-                    attemptsRepository.save(attempts);
-                }
-                // gen token voi subject la username va tra ve client
-                return jwtUtils.generateJwtToken(username);
-            } else {
-                this.calculateAttempts(username);
-                throw new BadCredentialsException("Invalid login details");
-            }
+            return jwtUtils.generateJwtToken(authentication);
         } catch (AuthenticationException exception) {
+            this.calculateAttempts(username);
             throw new BadCredentialsException("Invalid login details");
         }
     }
